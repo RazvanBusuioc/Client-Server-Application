@@ -1,0 +1,156 @@
+                        Client-Server Application
+                          -Messages management-
+                                                                
+                                                         Gabriel-Razvan Busuioc
+                                                                          324CB
+
+        Source Files
+    
+    The project contains the following source files and headers:
+-database.cpp, database.h - this file contains the declarations and 
+implementation of the client class and the database calss.
+
+The Client class represents a tcp client in the server database. Every tcp
+client has a list of subscriptions and a queue of packets. This queue is used
+for clients that have a Store&Forward subscription in order to send them all
+the messages from the udp clients even though these messages have been sent
+when the tcp client was offline. The client class has setters and getters
+methods, as well as methods to add/remove a subscription and add/send waiting
+packets in the queue.
+
+The ServerDataBase class contains a list of clients representing the clients
+that have an available subscription to the server.If a client connects to the
+server and does not subscribe to any topic, he will be removed from the datab.
+at the time of his disconnection. Any other clients that subscribe to a topic
+and go offline will be stored in the database as long as they have a
+subscription. The ServerDataBase class contains methods to work with multiple
+or individual clients. Most of these methods depend on the methods in the
+Client class, as the server has only a refference to the database, and not to
+every client.
+
+
+-helpers.h - this header file contains all the macros used in the other files.
+It also contains data structures for various packets and payload of the packets
+such as : udp_to_server packet, server_to_tcp packet and vice versa. Every
+packet has a different payload depending on the data type sent by the udp
+clients. Every packet received is decoded by pointing the right data structures
+to the packet payload. Some of these data structures are:
+--struct INT --struct SHORT_REAL --struct FLOAT --struct STRING
+These data structures are declared as "packed" so there will be no gaps of
+memory between the fields of the structure.
+
+
+-server.cpp, client.cpp - These files contains the implementations for the
+server, respectively the tcp client.
+
+
+
+        Implementation
+    
+    The Server
+
+The server starts by opening a socket for tcp connections on the port given as
+parameter in the command line. The server asign an address to the socket with
+system call "bind" then marks the socket as passive(accepting connections) 
+using system call "listen". The same is done for a udp connection. The server
+then sets the file descriptors to read from (stdin, udp_socketfd, tcp_socketfd)
+and enters in an infinite loop waiting for connections from tcp clients or/and
+packets/messages from udp clients. At every loop cicle the server selects the
+file descriptors to read from:
+
+--If the stdin file descriptor is selected, the server gets a command from
+stdin. The only valid command accepted from stdin is "exit". In any other case,
+an error message is printed to stdout.
+
+--If the tcp socket file desciptor is selected, then someone is probably trying
+to make a connection with the server. The server accepts the connection and
+waits for the client to send a message with his user id. After receiving the id
+the server sets the new file descriptor(of the client) as valid. After this the
+server verifies if the client that connected is already in the database. If so
+"Newl cient (id)connected from ip:port" is printed at stdin. At this point, the
+server checks if the client that reconnected has any S&F subscriptions and if
+so, all the waiting packets are send chronologically to him. If the client is
+not in the database "New Client (id) connected from ip:port" is printed at
+stdin. If the client that tries to connect has an ip addres that is already
+online, he will receive a packet which signals him that he needs to change his
+id in order to connect to the server. In this case, the server closes the
+connection with the client that tried to connect.
+
+--If the udp socket file descriptor is selected, then the server is going to
+receive message(s) from udp client(s). In this case, the servers waits for a
+message using system call "recvfrom". After receiving the message, the server
+creates a packet using the protocol known by the tcp clients and sends it to
+all the tcp clients that have a subscription to the topic received. If there
+are any tcp offine clients with S&F subscription on that topic, the server
+introduces the packet in the client`s afferent queue.
+
+--If a tcp client file desciptor is selected, then the servers is going to
+receive a message from a tcp client/subscriber. If the recv system call returns
+0 then it means that the client has unexpectedly closed connection(ctrl+v)
+and the server will close the connection with that client. The packet received
+has a type field that characterizes the packets purpose:
+---If the packet received is a subscription packet, the server will add the
+requested subsciption to the clients list of subscriptions.
+---If the packet received is an unsubscription packet, the server will remove
+that particular subscription from the clients list of subscriptions.
+---If the packet received is a disconnection packet, that client is either set
+offline (if he has any subscriptions) or removed from the database(if he has 0
+subscriptions) because there is no need to populate the database with clients
+that will not subscribe to anything and go offline. I have chosen to implement
+the server in this way so that the server database will be more efficient in
+storing data for the clients that actually use the server. By not storing all
+the data, the server memory will not collapse in the case of an attack using
+large ammounts of connections and disconnections.
+
+    Conclusions:
+-The server stores data only for clients that have one or more subscriptions
+-If a client that is already in the database connects "New client x connected
+from ip:port" will be printed at stdout
+-If a client that is not in the database connects "New client x connected
+from ip:port" will be printed at stdout
+-If a client closes connection unexpectedly (aka ctrl+v) the server will close
+the connection with the client in order to not threat the server integrity
+-If the server closes, proper packets will be send to all the clients in the
+database in order to signal them of this aspect.
+
+
+
+    The Client
+
+The client starts by opening a socket and connecting to the server. Immediately
+the client will send the server a message containing his user id. The server
+will send the client a validation back. If the user id is invalid(already 
+used) the client will close the connection to the server and exit. A proper
+message will be printed at stdout. If the user id is valid, the client will
+enter in an infinite loop waiting for messages to be received or for commands
+at stdin.
+-If a command is given at stdin, the integrity and precision of the command is
+evaluated. If the command is not known, a proper message will be printed at
+stdout. If the command is ok, the client will send a proper packet to the
+server ((un)subscription packet, exit packet);
+-If the client receives a packet from the server, the message will be decoded
+and printed at stdin. If the received packet does not match any known protocols
+a proper message will be printed at stdout. If the packet received represents
+a closing packet(that means the server closed (un)expectedly) the client will
+close.
+    
+
+        Possible problems
+
+-A possible problem is represented by the efficiency of the servers database.
+I focused on the functionalities of the program rather than on efficiency when
+implementing the look ups in the list of clients and the lists of subscription.
+As a result of that, all the searches are linear and have O(n) time complexity.
+Solution: A lexical sort and insert in these lists will conduct to a O(log n)
+complexity which would dramatically reduce the lookup time.
+
+
+        Feedback
+Loved working on this project. It helped me understand better the tcp and udp
+protocols and it also pushed me to think and develop the functionalities of the
+server, searching at the same time for efficient sollutions to some possbile
+problems.
+    
+
+                                                                               
+    
